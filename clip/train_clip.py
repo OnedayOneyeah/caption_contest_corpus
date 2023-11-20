@@ -6,6 +6,7 @@ for task in {matching,ranking}; do for sp in {1,2,3,4}; do for lr in {.00001,.00
 import argparse
 import numpy as np
 import torch
+import time
 import json
 import pprint
 import PIL
@@ -21,8 +22,8 @@ import accelerate
 import random
 import subprocess
 import pprint
-from datasets import load_dataset
-
+from datasets import load_dataset, load_from_disk
+from utils import dict_to_markdown, mkdirp
 
 class SquarePad:
     # https://discuss.pytorch.org/t/how-to-resize-and-pad-in-a-torchvision-transforms-compose/71850/9
@@ -150,6 +151,11 @@ def parse_args():
                         type=float,
                         default=.00001)
 
+
+    parser.add_argument('--result_dir',
+                        type=str,
+                        default="results/")
+
     parser.add_argument('--use_accelerate',
                         type=int,
                         default=0,
@@ -180,13 +186,23 @@ def parse_args():
                         default=None,
                         help='if this prefix is set, it will be appended to the input.')
 
+    parser.add_argument("--debug",
+                        action="store_true",
+                        help="debug (fast) mode, break all loops, do not load all data into memory.")
+
     args = parser.parse_args()
+    print(dict_to_markdown(vars(args), max_str_len=120))
 
     if args.prefix and ('+' in args.prefix or '~' in args.prefix):
         print('We dont support plus signs or tildes in prefixes.')
         quit()
 
-    args.output_path = ('task={}'.format(args.task) +
+    # args.result_dir = f'results/{time.strftime("%Y_%m_%d_%H_%M_%S")}/'
+    mkdirp(args.result_dir)
+    # args.output_path = args.result_dir + 'model_best.pt'
+
+    args.output_path = (args.result_dir +
+                        'task={}'.format(args.task) +
                         '~split={}'.format(args.split) +
                         '~val{}'.format('acc') + '={:.5f}' + '~pad={}'.format(args.pad) +
                         '~model=' + '{}'.format(args.clip_model.replace('/', '*')) +
@@ -292,13 +308,17 @@ def main():
     except:
         args.input_resolution = model.input_resolution
 
+    try:
+        data = load_from_disk('The New Yorker Caption Contest')
+    except:
+        if args.task == 'matching':
+            split_name = 'matching_from_pixels' if args.split in [0, 5] else 'matching_from_pixels_{}'.format(
+                args.split)
+        elif args.task == 'ranking':
+            split_name = 'ranking_from_pixels' if args.split in [0, 5] else 'ranking_from_pixels_{}'.format(args.split)
 
-    if args.task == 'matching':
-        split_name = 'matching_from_pixels' if args.split in [0, 5] else 'matching_from_pixels_{}'.format(args.split)
-    elif args.task == 'ranking':
-        split_name = 'ranking_from_pixels' if args.split in [0, 5] else 'ranking_from_pixels_{}'.format(args.split)
-
-    data = load_dataset("jmhessel/newyorker_caption_contest", split_name)
+        data = load_dataset("jmhessel/newyorker_caption_contest", split_name)
+        data.save_to_disk('The New Yorker Caption Contest')
 
     train, val, test = data['train'], data['validation'], data['test']
     if args.split == 5:
@@ -367,6 +387,10 @@ def main():
 
     loss_fn = torch.nn.CrossEntropyLoss()
 
+    if args.debug:
+        print('Debug mode. We just run the model with 1 epoch and 3 iterations.')
+        args.n_epochs = 1
+
     for epoch in range(args.n_epochs):
         if mainproc:
             print('Epoch {}'.format(epoch))
@@ -412,6 +436,8 @@ def main():
                     running_sum_accs += np.sum(preds.detach().cpu().numpy() == batch['labels'].detach().cpu().numpy())
                     bar.set_description('loss = {:.6f} acc = {:.6f}'.format(running_sum_loss / n, running_sum_accs / n_exs))
 
+                if i > 2 and args.debug:
+                    break
 
             if mode == 'val' and mainproc:
                 val_acc = running_sum_accs / n_exs
@@ -428,23 +454,29 @@ def main():
                     best_val_acc = val_acc
 
                     if args.use_accelerate:
+                        # torch.save(
+                        #     {'model_state_dict': accelerator.unwrap_model(model).state_dict(),
+                        #      'args': vars(args)},
+                        #     tmpfile.name)
                         torch.save(
                             {'model_state_dict': accelerator.unwrap_model(model).state_dict(),
                              'args': vars(args)},
-                            tmpfile.name)
+                            args.output_path)
                     else:
                         try:
                             torch.save(
                                 {'model_state_dict': model.module.state_dict(),
                                  'optimizer_state_dict': optim.state_dict(),
                                  'args': vars(args)},
-                                tmpfile.name)
+                                args.output_path)
+                                # tmpfile.name)
                         except:
                             torch.save(
                                 {'model_state_dict': model.state_dict(),
                                  'optimizer_state_dict': optim.state_dict(),
                                  'args': vars(args)},
-                                tmpfile.name)
+                                args.output_path)
+                                # tmpfile.name)
                         not_improved_epoch = 0
                 else:
                     not_improved_epoch += 1

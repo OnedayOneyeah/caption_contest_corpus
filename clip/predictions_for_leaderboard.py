@@ -146,7 +146,6 @@ def main():
 
     trainlib.add_prefix(test, args)
 
-
     test_loader = torch.utils.data.DataLoader(
         trainlib.CLIPDataset(test, args, training=False),
         shuffle=False, batch_size=args.batch_size, num_workers=4)
