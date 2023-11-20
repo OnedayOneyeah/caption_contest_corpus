@@ -1,26 +1,11 @@
-#for task in matching
-#  do for sp in 1 2 3 4
-#    do for lr in .00001 .00005 .000005;
-#      do accelerate launch clip/train_clip.py $sp $task --warmup 200 --clip_model ViT-L/14@336px \
-#      --pad 1 --lr $lr --use_accelerate 1 --batch_size 16 --n_epochs 12;
-#    done;
-#  done;
-#done;
-
-#for task in matching
-#  do for sp in 1
-#    do for lr in .000005
-#      do accelerate launch clip/train_clip.py $sp $task --warmup 200 --clip_model ViT-L/14@336px \
-#      --pad 1 --lr $lr --use_accelerate 1 --batch_size 16 --n_epochs 12 --debug;
-#    done;
-#  done;
-#done;
-
 task=matching
 lr=.000005
+dataset_path='/data/mjjung/The_new_yorker_caption_contest' # define your dataset path.
+
 for sp in 1 2 3 4
 do
-  accelerate launch clip/train_clip.py $sp $task \
+  accelerate launch --config_file clip/my_config_file.yaml \
+  clip/train_clip.py $sp $task \
   --warmup 200 \
   --clip_model ViT-L/14@336px \
   --pad 1 \
@@ -28,8 +13,21 @@ do
   --use_accelerate 1 \
   --batch_size 16 \
   --n_epochs 12 \
+  --dataset_path $dataset_path \
   ${@:1}
 done
 
-#sp=5
-#accelerate launch clip/train_clip.py 5 $task --warmup 200 --clip_model ViT-L/14@336px --pad 1 --lr $lr --use_accelerate 1 --batch_size 16 --n_epochs 12;
+for sp in 5
+do
+  accelerate launch --config_file clip/my_config_file.yaml \
+  clip/train_clip.py $sp $task \
+  --warmup 200 \
+  --clip_model ViT-L/14@336px \
+  --pad 1 \
+  --lr $lr \
+  --use_accelerate 1 \
+  --batch_size 16 \
+  --n_epochs 12 \
+  --dataset_path $dataset_path \
+  ${@:1}
+done

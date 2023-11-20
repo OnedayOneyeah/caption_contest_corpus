@@ -151,10 +151,13 @@ def parse_args():
                         type=float,
                         default=.00001)
 
-
     parser.add_argument('--result_dir',
                         type=str,
                         default="results/")
+
+    parser.add_argument('--dataset_path',
+                        type=str,
+                        default="dataset/")
 
     parser.add_argument('--use_accelerate',
                         type=int,
@@ -222,6 +225,7 @@ def parse_args():
         if fnameparse(args.output_path) in set([fnameparse(x) for x in os.listdir(outdir) if '.pt' in x]):
             print('{} done already, run with --force_run to run.'.format(args.output_path))
             quit()
+
     return args
 
 
@@ -300,7 +304,6 @@ def main():
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
     accelerator = accelerate.Accelerator()
     mainproc = accelerator.is_local_main_process
-
     model, preprocess = clip.load(args.clip_model, jit=False, device='cpu')
     model.float()
     try:
