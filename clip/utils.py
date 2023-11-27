@@ -15,5 +15,5 @@ def dict_to_markdown(d, max_str_len=120):
     return pd.DataFrame(d, index=[0]).transpose().to_markdown()
 
 def mkdirp(p):
-    if not os.path.exists(p):
-        os.makedirs(p)
+    # if not os.path.exists(p):
+    os.makedirs(p, exist_ok=True)
