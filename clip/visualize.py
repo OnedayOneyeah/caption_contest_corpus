@@ -15,6 +15,7 @@ import random
 import subprocess
 import pprint
 import train_clip as trainlib
+from utils import convert_matching, convert_quality, clip_forward, add_prefix, batch_to_device
 from datasets import load_dataset, load_from_disk
 from clip_dataset import CLIPDataset, CLIPTEXTAugDataset
 
@@ -68,6 +69,13 @@ def parse_args():
                         default='ViT-L/14@336px',
                         type=str,
                         choices=['ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'ViT-B/16', 'RN50x16', 'RN50x64', 'ViT-L/14@336px', 'ViT-L/14'])
+
+    parser.add_argument('--mode',
+                        type=str,
+                        default='basic',
+                        help='if this option is set (except for basic), adding extra answer candidate or text augmentation will be performed.',
+                        choices=['basic', 'rephrase', 'keywords', 'Antonym'])
+
 
     args = parser.parse_args()
 
@@ -159,16 +167,22 @@ def main():
 
 
     if args.task == 'matching':
-        train = [trainlib.convert_matching(t, args) for t in train]
-        val = [trainlib.convert_matching(t, args) for t in val]
-    elif args.task == 'ranking':
-        train = [trainlib.convert_quality(t, args) for t in train]
-        val = [trainlib.convert_quality(t, args) for t in val]
+        # train = [trainlib.convert_matching(t, args) for t in train]
+        # val = [trainlib.convert_matching(t, args) for t in val]
+        train = [convert_matching(t, args) for t in train]
+        val = [convert_matching(t, args) for t in val]
+    # elif args.task == 'ranking':
+    #     # train = [trainlib.convert_quality(t, args) for t in train]
+    #     # val = [trainlib.convert_quality(t, args) for t in val]
+    #     train = [convert_quality(t, args) for t in train]
+    #     val = [convert_quality(t, args) for t in val]
     else:
         raise NotImplementedError
 
-    trainlib.add_prefix(train, args)
-    trainlib.add_prefix(val, args)
+    # trainlib.add_prefix(train, args)
+    add_prefix(train, args)
+    # trainlib.add_prefix(val, args)
+    add_prefix(val, args)
 
     # train_loader = CLIPDataset(train, args, training=True)
     train_loader = CLIPTEXTAugDataset(train, args, training=True)
@@ -192,10 +206,12 @@ def main():
 
     for i, batch in bar:
         with torch.no_grad():
-            meta, batch = trainlib.batch_to_device(batch, 'train', args)
+            meta, batch = batch_to_device(batch, 'train', args)
+            # meta, batch = trainlib.batch_to_device(batch, 'train', args)
             n_choice = batch['choices'].shape[1]
             batch['choices'] = batch['choices'].reshape((-1, 77))
-            image_features, text_features = trainlib.clip_forward(model, batch['image'], batch['choices'])
+            image_features, text_features = clip_forward(model, batch['image'], batch['choices'])
+            # image_features, text_features = trainlib.clip_forward(model, batch['image'], batch['choices'])
             text_features = text_features.reshape((image_features.shape[0], n_choice, -1))
             image_features = torch.unsqueeze(image_features, 1)
             logits = logit_scale.exp() * (image_features * text_features).sum(2)
