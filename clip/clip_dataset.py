@@ -20,25 +20,6 @@ import pprint
 from datasets import load_dataset, load_from_disk
 from utils import dict_to_markdown, mkdirp
 
-import requests
-
-API_URL = "https://api-inference.huggingface.co/models/tiiuae/falcon-7b-instruct"
-API_TOKEN= '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'
-headers = {"Authorization": f"Bearer {API_TOKEN}"}
-prompt = 'Please rewrite the following sentence while maintaining its semantic meanings: '
-
-def query(payload):
-    response = requests.post(API_URL, headers=headers, json=payload)
-    return response.json()
-
-def rewrite(sentence):
-    output = query({
-        "inputs": f"{prompt} {sentence}",
-    })
-    print(output)
-    return output[0]['generated_text'].split('\n')[1]
-
-
 class SquarePad:
     # https://discuss.pytorch.org/t/how-to-resize-and-pad-in-a-torchvision-transforms-compose/71850/9
     def __call__(self, image):
@@ -128,6 +109,7 @@ class CLIPTEXTAugDataset(torch.utils.data.Dataset):
     def __init__(self, data, args, training=False):
         self.args = args
         self.data = data
+        self.mode = args.mode
 
         self.training = training
         if self.args.pad:
@@ -183,11 +165,13 @@ class CLIPTEXTAugDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         c_data = self.data[idx]
-        try:
-            new_gt_sent = rewrite(c_data['choices'][c_data['label']])
-            c_data['choices'][c_data['label']] = rewrite(c_data['choices'][c_data['label']])
-        except:
-            print('error with the sentence:', c_data['choices'][c_data['label']])
+        if self.mode == 'rephrase':
+            pass
+        elif self.mode == 'keywords':
+            pass
+        elif self.mode =='Antonym':
+            pass
+
         if 'filepath' in c_data:
             image = Image.open(c_data['filepath'])
         else:

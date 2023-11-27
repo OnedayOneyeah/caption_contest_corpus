@@ -62,6 +62,12 @@ def parse_args():
                         default=None,
                         help='if this prefix is set, it will be appended to the input.')
 
+    parser.add_argument('--mode',
+                        type=str,
+                        default='basic',
+                        help='if this option is set (except for basic), adding extra answer candidate or text augmentation will be performed.',
+                        choices=['basic', 'rephrase', 'keywords', 'Antonym'])
+
     parser.add_argument("--debug",
                         action="store_true",
                         help="debug (fast) mode, break all loops, do not load all data into memory.")
