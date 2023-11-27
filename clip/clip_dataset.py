@@ -120,11 +120,10 @@ class CLIPTEXTAugDataset(torch.utils.data.Dataset):
         else:
             self.preprocess = self._transform_train_pad(args.input_resolution) if self.training else self._transform_test_pad(args.input_resolution)
 
-        if self.mode == "rephrase":
+
+        if self.mode in ['rephrase', 'antonym']:
             from transformers import AutoTokenizer, AutoModelForCausalLM
             tokenizer = AutoTokenizer.from_pretrained("tiiuae/falcon-7b-instruct")
-            prompt = 'Re-write the sentence while maintaining its semantic meanings: '
-
             try:
                 path = '/data/mjjung/storage/falcon-7b'
                 rephraser = AutoModelForCausalLM.from_pretrained(path)
@@ -134,14 +133,32 @@ class CLIPTEXTAugDataset(torch.utils.data.Dataset):
             rephraser.to(device)
             rephraser.eval()
 
+        if self.mode in ['keywords', 'antonym']:
+            # keyword extraction
+            import nltk
+            from rake_nltk import Rake
+            nltk.download('punkt')
+            nltk.download('stopwords')
+
+            def extract_keyword(sent):
+                
+                rake_nltk_var = Rake()
+                rake_nltk_var.extract_keywords_from_text(sent)
+                extracted_keyword = rake_nltk_var.get_ranked_phrases()[0] # keyword extraction, phrases format.
+
+                return extracted_keyword
+
+        if self.mode == "rephrase":
+
             rephrase_json_path = 'rephrase.json'
             if os.path.exists(rephrase_json_path):
                 self.rephrase = load_json(rephrase_json_path)
             else:
                 self.rephrase = dict()
+                prompt = 'Re-write the sentence while maintaining its semantic meanings: '
                 for c_data in tqdm(self.data, total=len(self.data), desc='rephrase the sentences..'):
                     gt_sent = c_data['choices'][c_data['label']]
-                    input_text = self.prompt + gt_sent
+                    input_text = prompt + gt_sent
                     token = self.tokenizer(input_text, return_tensors="pt").input_ids.to(device)
                     with torch.no_grad():
                         output = self.rephraser.generate(token, max_new_tokens=100)
@@ -149,6 +166,38 @@ class CLIPTEXTAugDataset(torch.utils.data.Dataset):
                     new_gt_sent = sent.split('\n')[1].split('<|endoftext|>')[0]
                     self.rephrase[c_data['contest_number']] = new_gt_sent
                 save_json(self.rephrase, rephrase_json_path)
+
+        elif self.mode == 'keywords':
+            keywords_json_path = 'keywords.json'
+            if os.path.exists(keywords_json_path):
+                self.keywords = load_json(keywords_json_path)
+            else:
+                self.keywords = dict()
+                for c_data in tqdm(self.data, total = len(self.data), desc = 'extract the keywords from sentences..'):
+                    gt_sent = c_data['choices'][c_data['label']]
+                    keywords = extract_keyword(gt_sent)
+                    self.keywords[c_data['contest_number']] = keywords
+                save_json(self.keywords, keywords_json_path)
+
+        elif self.mode == 'antonym':
+            antonym_json_path = 'antonym.json'
+            if os.path.exists(antonym_json_path):
+                self.antonym = load_json(antonym_json_path)
+            else:
+                self.antonym = dict()
+                prompt = 'Re-write the sentence while replacing the keyword with its antonym.'
+
+                for c_data in tqdm(self.data, total = len(self.data), desc = 'change the keywords to their antonyms..'):
+                    gt_sent = c_data['choices'][c_data['label']]
+                    keyword = extract_keyword(gt_sent)
+                    input_text = f'sentence: {gt_sent}, keyword: {keyword} ' + prompt
+                    token = self.tokenizer(input_text, return_tensors="pt").input_ids.to(device)
+                    with torch.no_grad():
+                        output = self.rephraser.generate(token, max_new_tokens = 100)
+                    sent = self.tokenizer.decode(output[0])
+                    ant_sent = sent.split('\n')[1].split('<|endoftext|>')[0]
+                    self.antonym[c_data['contest_number']] = ant_sent
+                save_json(self.antonym, antonym_json_path)
 
     def _transform_train_pad(self, n_px):
         return Compose([
@@ -203,9 +252,11 @@ class CLIPTEXTAugDataset(torch.utils.data.Dataset):
             new_gt_sent = self.rephrase[c_data['contest_number']]
             c_data['choices'][c_data['label']] = new_gt_sent
         elif self.mode == 'keywords':
-            pass
-        elif self.mode =='Antonym':
-            pass
+            keywords = self.keywords[c_data['contest_number']]
+            c_data['choices'][c_data['label']] = keywords
+        elif self.mode =='antonym':
+            antonym = self.antonym[c_data['contest_number']]
+            c_data['choices'][c_data['label']] = antonym
 
         if 'filepath' in c_data:
             image = Image.open(c_data['filepath'])
