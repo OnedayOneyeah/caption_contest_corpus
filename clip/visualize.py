@@ -103,9 +103,6 @@ def parse_args():
 
     print('padding={}, backbone={}'.format(args.pad, args.clip_model))
     args.use_accelerate = False
-
-    print('writing all results to {}'.format(args.output))
-
     return args
 
 
@@ -117,12 +114,9 @@ def main():
     torch.cuda.manual_seed(1)
 
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model, preprocess = clip.load(args.clip_model, jit=False)
+    model, preprocess = clip.load(args.clip_model, jit=False, device=args.device)
     model.float()
     model.eval()
-
-    zero_shot_clip, _ = clip.load(args.clip_model, device=0, jit=False)
-    zero_shot_clip.eval()
 
     # load model #
     if 'zero_shot' not in args.clip_model_path:
@@ -139,15 +133,14 @@ def main():
     except:
         args.input_resolution = model.input_resolution
 
-
     try:
         data = load_from_disk(args.dataset_path)
     except:
         if args.task == 'matching':
             split_name = 'matching_from_pixels' if args.split in [0, 5] else 'matching_from_pixels_{}'.format(
                 args.split)
-        elif args.task == 'ranking':
-            split_name = 'ranking_from_pixels' if args.split in [0, 5] else 'ranking_from_pixels_{}'.format(args.split)
+        else:
+            raise NotImplementedError
 
         data = load_dataset("jmhessel/newyorker_caption_contest", split_name)
         data.save_to_disk(args.dataset_path)
@@ -167,15 +160,8 @@ def main():
 
 
     if args.task == 'matching':
-        # train = [trainlib.convert_matching(t, args) for t in train]
-        # val = [trainlib.convert_matching(t, args) for t in val]
         train = [convert_matching(t, args) for t in train]
         val = [convert_matching(t, args) for t in val]
-    # elif args.task == 'ranking':
-    #     # train = [trainlib.convert_quality(t, args) for t in train]
-    #     # val = [trainlib.convert_quality(t, args) for t in val]
-    #     train = [convert_quality(t, args) for t in train]
-    #     val = [convert_quality(t, args) for t in val]
     else:
         raise NotImplementedError
 
